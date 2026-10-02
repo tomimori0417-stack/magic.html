@@ -3,22 +3,25 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>魔法の杖 動作テスト</title>
+<title>魔法の杖 高度アクションテスト</title>
 <style>
-  body { font-family: 'Helvetica Neue', Arial, sans-serif; text-align: center; background-color: #2c3e50; color: #ecf0f1; padding: 20px; margin: 0; }
-  h1 { font-size: 24px; color: #f1c40f; }
-  .btn { display: inline-block; padding: 15px 25px; margin: 10px; font-size: 16px; font-weight: bold; color: #fff; background-color: #e74c3c; border: none; border-radius: 8px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+  body { font-family: 'Helvetica Neue', Arial, sans-serif; text-align: center; background-color: #1e272e; color: #d2dae2; padding: 20px; margin: 0; }
+  h1 { font-size: 22px; color: #0fbcf9; margin-bottom: 5px; }
+  p.sub { font-size: 12px; color: #808e9b; margin-top: 0; }
+  .btn { display: inline-block; padding: 15px 25px; margin: 10px; font-size: 16px; font-weight: bold; color: #fff; background-color: #f53b57; border: none; border-radius: 8px; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
   .btn:active { transform: translateY(2px); box-shadow: 0 2px 3px rgba(0,0,0,0.3); }
-  .mode-btn { background-color: #3498db; width: 80%; max-width: 300px; }
-  #status-box { margin: 20px auto; padding: 15px; background: #34495e; border-radius: 8px; font-size: 18px; line-height: 1.5; border: 2px solid #7f8c8d; }
-  #clear-msg { display: none; margin: 20px auto; padding: 20px; background: #f1c40f; color: #c0392b; font-size: 28px; font-weight: bold; border-radius: 10px; animation: popup 0.5s ease-out; }
-  #debug-info { margin-top: 20px; font-size: 12px; color: #95a5a6; text-align: left; background: #1a252f; padding: 10px; border-radius: 5px; }
+  .mode-btn { background-color: #3c40c6; width: 85%; max-width: 320px; font-size: 14px; }
+  #status-box { margin: 20px auto; padding: 20px; background: #2d3436; border-radius: 8px; font-size: 16px; line-height: 1.6; border: 2px solid #575fcf; min-height: 80px; }
+  .highlight { color: #ffd32a; font-size: 20px; font-weight: bold; display: block; margin-top: 5px; }
+  #clear-msg { display: none; margin: 20px auto; padding: 20px; background: #ffd32a; color: #1e272e; font-size: 24px; font-weight: bold; border-radius: 10px; animation: popup 0.5s ease-out; }
+  #debug-info { margin-top: 20px; font-size: 11px; color: #808e9b; text-align: left; background: #000; padding: 10px; border-radius: 5px; }
   @keyframes popup { 0% { transform: scale(0.5); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
 </style>
 </head>
 <body>
 
-  <h1>見習い魔法使い 杖テスト</h1>
+  <h1>上級魔法使い アクションテスト</h1>
+  <p class="sub">スウィッシュ、チャージ、タップの魔法陣</p>
   
   <div id="start-screen">
     <p>iPhoneの方は「許可」を押してください。</p>
@@ -28,11 +31,11 @@
   <div id="main-screen" style="display: none;">
     <div id="status-box">下のボタンから<br>テストする魔法を選んでください</div>
     
-    <button class="btn mode-btn" onclick="setMode(1)">① 単純に振る魔法</button>
-    <button class="btn mode-btn" onclick="setMode(2)">② 振り下ろす魔法</button>
-    <button class="btn mode-btn" onclick="setMode(3)">③ 垂直→水平→円の魔法</button>
+    <button class="btn mode-btn" onclick="setMode(1)">① スウィッシュ・アンド・フリック</button>
+    <button class="btn mode-btn" onclick="setMode(2)">② チャージ＆スラスト (魔力溜め)</button>
+    <button class="btn mode-btn" onclick="setMode(3)">③ サークル＆タップ (魔法陣)</button>
 
-    <div id="clear-msg">✨ 魔法成功！クリア！ ✨</div>
+    <div id="clear-msg">✨ 高等魔法 発動成功！ ✨</div>
   </div>
 
   <div id="debug-info">センサー待機中...</div>
@@ -40,9 +43,24 @@
 <script>
   let currentMode = 0;
   let sequenceStep = 0;
+  let isCleared = false;
+
+  // センサー計算用
+  let lastAx = 0, lastAy = 0, lastAz = 0;
+  
+  // モード1用（スウィッシュ）
+  let swishStartDir = 0;
+  let swishTime = 0;
+  
+  // モード2用（チャージ）
+  let chargeStartTime = 0;
+  let isCharging = false;
+  
+  // モード3用（円とタップ）
   let accumulatedAngle = 0;
   let lastWandAngle = null;
-  let isCleared = false;
+  let tapCount = 0;
+  let lastTapTime = 0;
 
   const startBtn = document.getElementById('start-btn');
   const startScreen = document.getElementById('start-screen');
@@ -51,126 +69,155 @@
   const clearMsg = document.getElementById('clear-msg');
   const debugInfo = document.getElementById('debug-info');
 
-  // 1. センサーの許可要求（iOS 13+ 対応）
+  // センサー許可
   startBtn.addEventListener('click', async () => {
     try {
-      // 加速度センサーの許可
       if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
         const p1 = await DeviceMotionEvent.requestPermission();
-        if (p1 !== 'granted') { alert('加速度センサーが許可されませんでした。'); return; }
+        if (p1 !== 'granted') { alert('加速度センサーを許可してください'); return; }
       }
-      // ジャイロセンサーの許可
       if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
         const p2 = await DeviceOrientationEvent.requestPermission();
-        if (p2 !== 'granted') { alert('ジャイロセンサーが許可されませんでした。'); return; }
+        if (p2 !== 'granted') { alert('ジャイロを許可してください'); return; }
       }
-      
       startScreen.style.display = 'none';
       mainScreen.style.display = 'block';
-      
       window.addEventListener('devicemotion', handleMotion, true);
       window.addEventListener('deviceorientation', handleOrientation, true);
     } catch (e) {
-      alert('センサーの起動に失敗しました。HTTPS環境で開いているか確認してください。');
+      alert('起動失敗。HTTPS環境で開いていますか？');
     }
   });
 
-  // モードの切り替え
   function setMode(mode) {
     currentMode = mode;
     sequenceStep = 0;
-    accumulatedAngle = 0;
-    lastWandAngle = null;
     isCleared = false;
     clearMsg.style.display = 'none';
     
-    if (mode === 1) statusBox.innerHTML = '【モード1】<br>スマホをシャカシャカ強く振れ！';
-    if (mode === 2) statusBox.innerHTML = '【モード2】<br>スマホを縦に持ち、上から下へ鋭く振り下ろせ！';
-    if (mode === 3) statusBox.innerHTML = '【モード3】<br>ステップ1: スマホを「垂直」に立てろ！';
+    isCharging = false; accumulatedAngle = 0; lastWandAngle = null; tapCount = 0;
+    
+    if (mode === 1) statusBox.innerHTML = '【モード1: スウィッシュ＆フリック】<br>スマホを左右どちらかに「U字」に振りかぶれ！';
+    if (mode === 2) statusBox.innerHTML = '【モード2: チャージ＆スラスト】<br>スマホを構え、2秒間「ピタッ」と静止しろ！<br><span style="font-size:12px;color:#aaa;">(魔力を溜める...)</span>';
+    if (mode === 3) statusBox.innerHTML = '【モード3: サークル＆タップ】<br>空中で杖を回し、魔法陣（円）を描け！';
   }
 
-  // クリア演出
   function showClear() {
     if (isCleared) return;
     isCleared = true;
     clearMsg.style.display = 'block';
-    statusBox.innerHTML = 'お見事！魔法が発動しました。';
-    currentMode = 0; // 判定をストップ
+    statusBox.innerHTML = '<span class="highlight">完璧な魔法だ！</span>';
+    currentMode = 0;
   }
 
-  // 2. 加速度の判定（振る、振り下ろす）
+  // 加速度（振る・止める・叩く）の判定
   function handleMotion(event) {
     if (currentMode === 0 || isCleared) return;
 
-    // Androidの機種依存対策（重力抜きを優先し、無ければ重力込みを使う）
     let acc = event.acceleration;
-    if (!acc || acc.x === null) {
-      acc = event.accelerationIncludingGravity;
-    }
+    if (!acc || acc.x === null) acc = event.accelerationIncludingGravity;
     if (!acc) return;
 
-    const ax = acc.x || 0;
-    const ay = acc.y || 0;
-    const az = acc.z || 0;
-    const totalAcc = Math.sqrt(ax*ax + ay*ay + az*az);
+    const ax = acc.x || 0, ay = acc.y || 0, az = acc.z || 0;
+    // 前回との「変化量（衝撃の強さ）」を計算
+    const deltaA = Math.sqrt((ax - lastAx)**2 + (ay - lastAy)**2 + (az - lastAz)**2);
+    
+    lastAx = ax; lastAy = ay; lastAz = az;
 
-    debugInfo.innerHTML = `【加速度】<br>X: ${ax.toFixed(1)} / Y: ${ay.toFixed(1)} / Z: ${az.toFixed(1)}<br>合計: ${totalAcc.toFixed(1)}`;
+    debugInfo.innerHTML = `衝撃(Delta): ${deltaA.toFixed(1)}<br>進捗ステップ: ${sequenceStep}`;
 
-    if (currentMode === 1) {
-      // ① 単純に振る（合計の加速度が20を超えたら）
-      if (totalAcc > 20) {
+    // ① スウィッシュ＆フリックの「フリック（弾く）」判定
+    if (currentMode === 1 && sequenceStep === 2) {
+      if (Date.now() - swishTime > 2500) {
+        setMode(1);
+        statusBox.innerHTML = '失敗！時間がかかりすぎた。<br>最初からやり直せ！';
+      } else if (deltaA > 15) { // 鋭い衝撃
         showClear();
       }
-    } else if (currentMode === 2) {
-      // ② 上から下に振る（Y軸の加速度が大きく、かつ他の軸より目立っているか）
-      if (Math.abs(ay) > 15 && Math.abs(ay) > Math.abs(ax) * 1.5 && totalAcc > 18) {
-        showClear();
+    }
+
+    // ② チャージ＆スラストの判定
+    if (currentMode === 2) {
+      if (sequenceStep === 0) {
+        if (deltaA < 0.6) { // ほぼ完全に静止している状態
+          if (!isCharging) {
+            isCharging = true;
+            chargeStartTime = Date.now();
+            statusBox.innerHTML = '【魔力チャージ中...】<br><span class="highlight">そのまま動かすな！</span>';
+          } else if (Date.now() - chargeStartTime > 2000) { // 2秒経過
+            sequenceStep = 1;
+            statusBox.innerHTML = '【チャージ完了！】<br><span class="highlight">一気に前へ突き出せ！！</span>';
+          }
+        } else { // 動いてしまった場合
+          if (isCharging) {
+            isCharging = false;
+            statusBox.innerHTML = '魔力が散ってしまった！<br>もう一度、完全に静止しろ！';
+          }
+        }
+      } else if (sequenceStep === 1) {
+        if (deltaA > 15) { // 鋭い突き出し（衝撃）
+          showClear();
+        } else if (Date.now() - chargeStartTime > 5000) {
+          setMode(2); // 時間切れリセット
+        }
+      }
+    }
+
+    // ③ サークル＆タップの「タップ」判定
+    if (currentMode === 3 && sequenceStep === 1) {
+      if (deltaA > 8) { // 叩いた衝撃を検知
+        let now = Date.now();
+        if (now - lastTapTime > 300) { // 連打防止（0.3秒間隔）
+          tapCount++;
+          lastTapTime = now;
+          if (tapCount === 1) {
+            statusBox.innerHTML = '【魔法陣描画完了！】<br><span class="highlight">トン！（あと1回叩け！）</span>';
+          } else if (tapCount === 2) {
+            showClear();
+          }
+        }
       }
     }
   }
 
-  // 3. ジャイロ（傾き）の判定（垂直→水平→円）
+  // ジャイロ（傾き・回転）の判定
   function handleOrientation(event) {
-    if (currentMode !== 3 || isCleared) return;
+    if (currentMode === 0 || isCleared) return;
 
-    const beta = event.beta || 0;   // 前後の傾き (-180〜180)
-    const gamma = event.gamma || 0; // 左右の傾き (-90〜90)
+    const beta = event.beta || 0;
+    const gamma = event.gamma || 0;
 
-    debugInfo.innerHTML = `【傾き】<br>前後(Beta): ${beta.toFixed(1)}<br>左右(Gamma): ${gamma.toFixed(1)}<br>進捗: ステップ ${sequenceStep}`;
-
-    if (sequenceStep === 0) {
-      // ステップ1: 垂直（スマホを立てている状態。Betaが70〜110度）
-      if (beta > 70 && beta < 110) {
-        sequenceStep = 1;
-        statusBox.innerHTML = '【モード3】<br>ステップ2: スマホを机に置くように「水平」にしろ！';
+    // ① スウィッシュ＆フリックの「スウィッシュ（弧を描く）」判定
+    if (currentMode === 1) {
+      if (sequenceStep === 0) {
+        if (gamma < -35) { swishStartDir = -1; sequenceStep = 1; statusBox.innerHTML = '【弧を描き中...】<br>そのまま逆側まで振れ！'; }
+        else if (gamma > 35) { swishStartDir = 1; sequenceStep = 1; statusBox.innerHTML = '【弧を描き中...】<br>そのまま逆側まで振れ！'; }
+      } else if (sequenceStep === 1) {
+        if ((swishStartDir === -1 && gamma > 35) || (swishStartDir === 1 && gamma < -35)) {
+          sequenceStep = 2;
+          swishTime = Date.now();
+          statusBox.innerHTML = '【フリック待機！】<br><span class="highlight">手首を使って上に鋭く弾け（ピュッ！）</span>';
+        }
       }
-    } else if (sequenceStep === 1) {
-      // ステップ2: 水平（BetaもGammaもほぼ0度）
-      if (Math.abs(beta) < 20 && Math.abs(gamma) < 20) {
-        sequenceStep = 2;
-        lastWandAngle = null;
-        accumulatedAngle = 0;
-        statusBox.innerHTML = '【モード3】<br>ステップ3: そのまま手首を使って杖の先で「円」を描け！';
-      }
-    } else if (sequenceStep === 2) {
-      // ステップ3: 円を描く（BetaとGammaの変化から、傾きの角度を計算して円運動を検知）
-      // 少し傾いていないと角度が計算できないため、傾きがあるかチェック
+    }
+
+    // ③ サークル＆タップの「サークル（円）」判定
+    if (currentMode === 3 && sequenceStep === 0) {
       if (Math.abs(beta) > 5 || Math.abs(gamma) > 5) {
-        // 現在の傾き方向（角度）を計算（-180度 〜 180度）
         let currentWandAngle = Math.atan2(beta, gamma) * (180 / Math.PI);
-        
         if (lastWandAngle !== null) {
           let diff = currentWandAngle - lastWandAngle;
-          
-          // 角度が180度から-180度へ切り替わる境界をまたいだ時の補正
           if (diff > 180) diff -= 360;
           if (diff < -180) diff += 360;
+          accumulatedAngle += Math.abs(diff);
           
-          accumulatedAngle += Math.abs(diff); // 動かした角度を足していく
-          
-          // 約1周（300度）回したらクリア判定（少し甘めに設定）
-          if (accumulatedAngle > 300) {
-            showClear();
+          let progress = Math.min(100, Math.floor((accumulatedAngle / 320) * 100));
+          statusBox.innerHTML = `【魔法陣（円）を描き中...】<br>進捗: ${progress}%`;
+
+          if (accumulatedAngle > 320) { // ほぼ1周
+            sequenceStep = 1;
+            tapCount = 0;
+            statusBox.innerHTML = '【魔法陣描画完了！】<br><span class="highlight">杖のお尻（スマホの下部）を2回トントンと叩け！</span>';
           }
         }
         lastWandAngle = currentWandAngle;
